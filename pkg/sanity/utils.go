@@ -68,17 +68,59 @@ func numberOfVolumesInCluster(c api.OpenStorageVolumeClient) int {
 	return len(res.VolumeIds)
 }
 
+func newTestVolume(volClient api.OpenStorageVolumeClient) string {
+	volReq := &api.SdkVolumeCreateRequest{
+		Name: "sdk-vol",
+		Spec: &api.VolumeSpec{
+			Size:             uint64(5 * GIGABYTE),
+			AggregationLevel: 2,
+			Encrypted:        true,
+			Shared:           false,
+			HaLevel:          3,
+			IoProfile:        api.IoProfile_IO_PROFILE_DB,
+			Cos:              api.CosType_HIGH,
+			Sticky:           true,
+			Format:           api.FSType_FS_TYPE_XFS,
+		},
+	}
+	volResp, err := volClient.Create(context.Background(), volReq)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(volResp).NotTo(BeNil())
+	Expect(volResp.VolumeId).NotTo(BeEmpty())
+	volID := volResp.VolumeId
+	return volID
+}
+
+func newTestCredential(credClient api.OpenStorageCredentialsClient) string {
+	credReq := &api.SdkCredentialCreateRequest{
+		CredentialType: &api.SdkCredentialCreateRequest_AwsCredential{
+			AwsCredential: &api.SdkAwsCredentialRequest{
+				AccessKey: "aws-access-key",
+				SecretKey: "AWS_SECRET_KEY_$$",
+				Endpoint:  "s3.aws.com",
+				Region:    "us-east",
+			},
+		},
+	}
+
+	credResp, err := credClient.Create(context.Background(), credReq)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(credResp.GetCredentialId()).NotTo(BeEmpty())
+	return credResp.GetCredentialId()
+}
+
 // This will create credential for provider listed from cb.yaml file
-func parseAndCreateCredentials(credClient api.OpenStorageCredentialsClient) int {
-	numCredCreated := 0
+func parseAndCreateCredentials(credClient api.OpenStorageCredentialsClient) map[string]string {
+	credMap := make(map[string]string)
 	for provider, providerParams := range config.ProviderConfig.CloudProviders {
 		if provider == "aws" {
+
 			credReq := &api.SdkCredentialCreateRequest{
 				CredentialType: &api.SdkCredentialCreateRequest_AwsCredential{
 					AwsCredential: &api.SdkAwsCredentialRequest{
 						AccessKey: providerParams["CredAccessKey"],
 						SecretKey: providerParams["CredSecretKey"],
-						Endpoint:  providerParams["CredEndpoint"],
+						Endpoint:  providerParams["CredsEndpoint"],
 						Region:    providerParams["CredRegion"],
 					},
 				},
@@ -87,7 +129,7 @@ func parseAndCreateCredentials(credClient api.OpenStorageCredentialsClient) int 
 			credResp, err := credClient.Create(context.Background(), credReq)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(credResp.GetCredentialId()).NotTo(BeEmpty())
-			numCredCreated++
+			credMap["aws"] = credResp.GetCredentialId()
 
 		} else if provider == "azure" {
 			credReq := &api.SdkCredentialCreateRequest{
@@ -102,7 +144,7 @@ func parseAndCreateCredentials(credClient api.OpenStorageCredentialsClient) int 
 			credResp, err := credClient.Create(context.Background(), credReq)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(credResp.GetCredentialId()).NotTo(BeEmpty())
-			numCredCreated++
+			credMap["azure"] = credResp.GetCredentialId()
 
 		} else if provider == "google" {
 			credReq := &api.SdkCredentialCreateRequest{
@@ -117,8 +159,8 @@ func parseAndCreateCredentials(credClient api.OpenStorageCredentialsClient) int 
 			credResp, err := credClient.Create(context.Background(), credReq)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(credResp.GetCredentialId()).NotTo(BeEmpty())
-			numCredCreated++
+			credMap["google"] = credResp.GetCredentialId()
 		}
 	}
-	return numCredCreated
+	return credMap
 }
